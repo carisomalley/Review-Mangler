@@ -25,7 +25,7 @@ class TmdbClient
 
         $response = HttpClient::get($url, ["Authorization: Bearer $apiKey", 'Accept: application/json']);
         if ($response['status'] !== 200) {
-            throw new \RuntimeException('TMDB search failed with HTTP ' . $response['status']);
+            throw new \RuntimeException('TMDB search failed with HTTP ' . $response['status'] . ': ' . $response['body']);
         }
 
         $data = json_decode($response['body'], true);

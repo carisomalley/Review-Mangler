@@ -27,7 +27,7 @@ class GoogleBooksClient
         $url = self::BASE_URL . '?' . http_build_query($params);
         $response = HttpClient::get($url, ['Accept: application/json']);
         if ($response['status'] !== 200) {
-            throw new \RuntimeException('Google Books search failed with HTTP ' . $response['status']);
+            throw new \RuntimeException('Google Books search failed with HTTP ' . $response['status'] . ': ' . $response['body']);
         }
 
         $data = json_decode($response['body'], true);
