@@ -126,6 +126,20 @@ require __DIR__ . '/_header.php';
   </form>
 </div>
 
+<div class="card">
+  <h2>Email digest</h2>
+  <p class="muted small">Off by default. A digest never includes review text — just the same summary shown above (CLAUDE.md §7.6).</p>
+  <form method="post" action="/update_notifications.php" class="inline-form">
+    <input type="hidden" name="tracked_title_id" value="<?= (int) $trackedTitleId ?>">
+    <select name="notification_cadence">
+      <?php foreach (['off' => 'Off', 'weekly' => 'Weekly digest', 'on_new_activity' => 'Notify on new activity'] as $value => $label): ?>
+        <option value="<?= $value ?>" <?= $tracked['notification_cadence'] === $value ? 'selected' : '' ?>><?= $label ?></option>
+      <?php endforeach; ?>
+    </select>
+    <button type="submit">Save</button>
+  </form>
+</div>
+
 <h2>Reviews</h2>
 <p class="muted small">Metadata only, by default (CLAUDE.md §7.5). Open one deliberately — nothing here is shown to you unless you choose it.</p>
 

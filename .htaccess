@@ -1,6 +1,40 @@
-# Defense in depth: if the hosting document root ever gets pointed at the
-# project root instead of /public (it should be /public — see README), this
-# blocks direct access to everything except the public/ folder.
+# Hostinger's shared/business web hosting plans fix the site's root at
+# public_html and don't expose a document-root setting at all — see the
+# README's deployment note. This file makes public_html behave AS IF the
+# document root were public/, without moving a single file: it rewrites
+# every request that isn't a real file/directory sitting right here into
+# public/, so https://yourdomain.com/login.php actually serves
+# public/login.php. Application code needs zero changes for this — every
+# public/*.php page already uses root-relative URLs ("/login.php",
+# "/assets/style.css", ...) and __DIR__-relative requires, and both keep
+# working exactly the same whether the docroot is public/ itself (a plan
+# that lets you set it) or public_html with this rewrite (Hostinger's
+# shared/business plans, which don't).
+#
+# app/, db/, bin/, cron/, and .env are never touched by the rewrite below —
+# they're real directories/files sitting right here, so a direct request
+# for any of them falls straight through to the deny-all block further down
+# untouched. THAT'S the actual protection, not the rewrite.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # The homepage request ("/") maps to this very directory, which exists —
+    # so the general "not an existing file/dir" rule below would never fire
+    # for it. Handle it explicitly, first.
+    RewriteRule ^$ public/index.php [L]
+
+    # Anything else that isn't a real file or directory at this level (i.e.
+    # isn't app/, db/, bin/, cron/, .env, or this .htaccess itself) gets
+    # routed into public/ instead.
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.+)$ public/$1 [L]
+</IfModule>
+
+# Defense in depth: even if the rewrite above is ever disabled or Hostinger
+# changes how it's configured, a direct request for anything at this level
+# (app/, db/, bin/, cron/, .env, ...) is denied outright. public/.htaccess
+# grants access back for the files that are actually meant to be served.
 <IfModule mod_authz_core.c>
     Require all denied
 </IfModule>

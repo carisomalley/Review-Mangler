@@ -22,7 +22,7 @@ class NewsClient
     private const BASE_URL = 'https://newsapi.org/v2/everything';
 
     /**
-     * @return array<int, array{external_url:string, headline:string, source_name:?string, published_at:?string, snippet:string}>
+     * @return array<int, array{external_url:string, headline:string, author:?string, published_at:?string, text:string}>
      */
     public function search(string $query, int $lookbackDays = 30): array
     {
@@ -48,14 +48,18 @@ class NewsClient
             if (empty($a['url'])) {
                 continue;
             }
+            // NewsAPI rarely gives an individual byline worth trusting; fall back
+            // to the outlet name so the review list at least shows a source.
+            $author = !empty($a['author']) ? $a['author'] : ($a['source']['name'] ?? null);
+
             $results[] = [
                 'external_url' => $a['url'],
                 'headline' => $a['title'] ?? '(untitled)',
-                'source_name' => $a['source']['name'] ?? null,
+                'author' => $author,
                 'published_at' => $a['publishedAt'] ?? null,
                 // NewsAPI's free tier truncates content; description + content is the
                 // best full-text approximation available without fetching each page.
-                'snippet' => trim(($a['description'] ?? '') . "\n\n" . ($a['content'] ?? '')),
+                'text' => trim(($a['description'] ?? '') . "\n\n" . ($a['content'] ?? '')),
             ];
         }
         return $results;

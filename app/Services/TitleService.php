@@ -72,31 +72,11 @@ class TitleService
         $stmt->execute([$userId, $titleId, $refreshCadenceHours]);
         $trackedTitleId = (int) $pdo->lastInsertId();
 
-        // Phase 1 ships with a single Tier A source: news (CLAUDE.md §12).
-        $newsSourceId = $this->ensureSource('news', 'newsapi.org', 'api');
-        $stmt = $pdo->prepare(
-            'INSERT IGNORE INTO tracked_title_sources (tracked_title_id, source_id, muted) VALUES (?, ?, 0)'
-        );
-        $stmt->execute([$trackedTitleId, $newsSourceId]);
+        // Link every currently-known Tier A source (CLAUDE.md §7.2, §9.5) —
+        // see SourceRegistry for the single place that list lives.
+        SourceRegistry::ensureAllLinked($trackedTitleId);
 
         return $trackedTitleId;
-    }
-
-    private function ensureSource(string $type, string $domain, string $fetchType): int
-    {
-        $pdo = Database::pdo();
-        $stmt = $pdo->prepare('SELECT id FROM sources WHERE domain = ? LIMIT 1');
-        $stmt->execute([$domain]);
-        $existing = $stmt->fetch();
-        if ($existing) {
-            return (int) $existing['id'];
-        }
-
-        $stmt = $pdo->prepare(
-            'INSERT INTO sources (type, domain, fetch_type, health_status, created_at) VALUES (?, ?, ?, ?, NOW())'
-        );
-        $stmt->execute([$type, $domain, $fetchType, 'ok']);
-        return (int) $pdo->lastInsertId();
     }
 
     /**

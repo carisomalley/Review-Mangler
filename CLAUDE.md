@@ -523,7 +523,10 @@ separate table, per the cron-batch approach in 9.3.
   Composer/SSH availability vary by plan (shared vs. business vs. VPS);
   confirm the specific plan before finalizing the job-scheduling design in
   §9.3, since a VPS plan would remove several of the constraints in §9.2
-  entirely.
+  entirely. **Resolved for the shared/business tier (2026-08-18):** these
+  plans fix the site root at `public_html` with no document-root setting at
+  all — see §13's build log and the root `.htaccess` for how the app adapts
+  without moving files or weakening the app/db/bin/cron/.env protection.
 
 ---
 
@@ -541,3 +544,46 @@ separate table, per the cron-batch approach in 9.3.
    indicators live from the start.
 4. **Phase 4**: delegate access, vacation mode, self-serve multi-tenant
    signup, trend charts.
+
+---
+
+## 13. Build log
+
+**Phase 1 (2026-08-18):** Built as specified, plus the personal-attack flag,
+content-warning tags, and correction feedback loop were pulled forward from
+Phase 2's list and shipped immediately — they're too central to the seed use
+case to leave out of the first cut. Delivered as 33 files. PHP-lint clean;
+not run against a live MySQL instance or real API keys (no MySQL server
+available in the build sandbox).
+
+**Phase 2 (2026-08-18):** Added Reddit (`RedditClient.php`, app-only OAuth,
+post/thread-level mentions) and YouTube (`YoutubeClient.php`, videos *plus*
+up to 5 top comments per video as separate scored items) as sources, behind
+a new `SourceRegistry` that both title-tracking and ingestion now go
+through — adding a future source (including a Tier B scraper in Phase 3)
+should mean touching only `SourceRegistry` and one new client class. Added
+digest emails: a per-title, opt-in (`off` by default) notification cadence
+setting, a dependency-free `SmtpMailer` (AUTH LOGIN over STARTTLS, matching
+Hostinger's mailbox SMTP), and a third cron script. Digests already respect
+`users.vacation_mode`, even though the toggle for it isn't in the UI until
+Phase 4 — the column existed since Phase 1's schema, so honoring it now cost
+nothing. `db/migrations/002_phase2.sql` covers anyone who already deployed
+Phase 1's schema; `db/schema.sql` itself was updated in place for fresh
+installs. Same caveats as Phase 1: lint-clean, not run live.
+
+**Deployment fix (2026-08-18):** During actual Hostinger deployment, the
+user found their plan's hPanel has no document-root setting at all — the
+site root is fixed at `public_html`, contradicting §9.2's assumption that
+it could be pointed at `public/`. Rather than moving application files into
+`public_html` directly (which would put `app/`, `db/`, `.env` etc. at the
+same level a browser can request, undermining the whole point of having a
+separate `public/`), fixed it with a `mod_rewrite` block added to the root
+`.htaccess`: any request that isn't a real file/directory at the
+`public_html` level gets internally rewritten into `public/`, so
+`https://domain/login.php` serves `public/login.php` with the URL bar never
+showing `/public/`. Zero application code changed — every page already used
+root-relative URLs and `__DIR__`-relative requires, which work identically
+under this scheme. The original deny-all block in `.htaccess` is untouched;
+the rewrite doesn't apply to `app/`, `db/`, `bin/`, `cron/`, or `.env`
+because they're real directories/files at that level, so they still fall
+straight through to the same deny-all protection as before.

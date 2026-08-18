@@ -1,6 +1,9 @@
--- Review Mangler — Phase 1 schema
--- See CLAUDE.md §9.4 for the full illustrative model. This is the subset
--- Phase 1 actually uses; delegates/notifications tables land in later phases.
+-- Review Mangler — schema through Phase 2
+-- See CLAUDE.md §9.4 for the full illustrative model. This file always
+-- reflects a fresh install with everything built so far; if you already ran
+-- an earlier version of this file against a live database, use the
+-- incremental files in db/migrations/ instead of re-running this one.
+-- Delegate access (Phase 4) still isn't in here.
 
 CREATE TABLE IF NOT EXISTS users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -28,6 +31,8 @@ CREATE TABLE IF NOT EXISTS tracked_titles (
     user_id INT UNSIGNED NOT NULL,
     title_id INT UNSIGNED NOT NULL,
     refresh_cadence_hours INT UNSIGNED NOT NULL DEFAULT 168, -- weekly default, §7.2
+    notification_cadence ENUM('off', 'weekly', 'on_new_activity') NOT NULL DEFAULT 'off', -- §7.6, opt-in on purpose
+    last_digest_sent_at DATETIME NULL,
     last_fetched_at DATETIME NULL,
     next_fetch_at DATETIME NULL,
     created_at DATETIME NOT NULL,
@@ -95,4 +100,16 @@ CREATE TABLE IF NOT EXISTS corrections (
     created_at DATETIME NOT NULL,
     CONSTRAINT fk_corr_classification FOREIGN KEY (classification_id) REFERENCES classifications(id) ON DELETE CASCADE,
     CONSTRAINT fk_corr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Phase 2: digest email log (CLAUDE.md §6, §7.6).
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id INT UNSIGNED NOT NULL,
+    tracked_title_id INT UNSIGNED NOT NULL,
+    type VARCHAR(50) NOT NULL DEFAULT 'digest',
+    sent_at DATETIME NOT NULL,
+    payload_summary VARCHAR(500) NULL,
+    CONSTRAINT fk_notif_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_notif_tt FOREIGN KEY (tracked_title_id) REFERENCES tracked_titles(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

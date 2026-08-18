@@ -92,4 +92,31 @@ class DashboardService
         $stmt->execute([$trackedTitleId, $titleId]);
         return $stmt->fetchAll();
     }
+
+    /**
+     * Same shape as aggregates(), but scoped to reviews classified after
+     * $sinceDatetime (or the beginning of time if null). Used for digest
+     * emails (CLAUDE.md §7.6) so a "new activity" digest only reports what's
+     * actually new since the last one sent, not the whole history again.
+     */
+    public function newActivitySince(int $titleId, int $trackedTitleId, ?string $sinceDatetime): array
+    {
+        $pdo = Database::pdo();
+        $stmt = $pdo->prepare(
+            "SELECT
+                COUNT(*) AS total,
+                SUM(c.sentiment = 'positive') AS positive,
+                SUM(c.sentiment = 'negative') AS negative,
+                SUM(c.sentiment = 'mixed') AS mixed,
+                SUM(c.personal_attack = 1) AS personal_attack_count
+             FROM reviews r
+             JOIN classifications c ON c.review_id = r.id
+             LEFT JOIN tracked_title_sources tts
+                ON tts.tracked_title_id = ? AND tts.source_id = r.source_id
+             WHERE r.title_id = ? AND COALESCE(tts.muted, 0) = 0
+               AND c.classified_at > ?"
+        );
+        $stmt->execute([$trackedTitleId, $titleId, $sinceDatetime ?? '1970-01-01 00:00:00']);
+        return $stmt->fetch() ?: [];
+    }
 }

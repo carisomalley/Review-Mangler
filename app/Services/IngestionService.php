@@ -5,9 +5,9 @@ namespace App\Services;
 use App\Database;
 
 /**
- * Ingestion tick (CLAUDE.md §7.2, §9.3). Phase 1 has exactly one source type
- * (news, via NewsClient) — more Tier A/Tier B sources plug in here in later
- * phases behind the same tracked_title_sources join.
+ * Ingestion tick (CLAUDE.md §7.2, §9.3). Loops every Tier A source linked to
+ * a tracked title (via SourceRegistry) — Phase 1 had just news; Phase 2 adds
+ * Reddit and YouTube here without touching the scheduling/dedup logic below.
  */
 class IngestionService
 {
@@ -52,30 +52,52 @@ class IngestionService
 
     /**
      * Also used for the user-triggered "check now" button (rate-limited
-     * separately — see title.php).
+     * separately — see title.php). Fetches from every unmuted source linked
+     * to this tracked title; one source failing doesn't stop the others
+     * (CLAUDE.md §7.2 — sources are meant to degrade independently).
      */
     public function fetchForTitle(int $trackedTitleId, int $titleId, string $displayName, ?string $creatorName): int
     {
+        // Backfills any Tier A source that didn't exist yet when this title
+        // was first tracked (e.g. a Phase 1 tracked_title gaining Reddit/
+        // YouTube in Phase 2) — cheap and idempotent, safe to call every run.
+        SourceRegistry::ensureAllLinked($trackedTitleId);
+
         $pdo = Database::pdo();
         $query = trim($displayName . ' ' . ($creatorName ?? ''));
 
-        $newsSourceId = $this->sourceId('newsapi.org');
-        if ($newsSourceId === null) {
-            return 0;
-        }
-
-        try {
-            $articles = (new NewsClient())->search($query);
-            $this->markSourceHealth($newsSourceId, 'ok');
-        } catch (\Throwable $e) {
-            $this->markSourceHealth($newsSourceId, 'degraded');
-            throw $e;
-        }
+        $linkedSourcesStmt = $pdo->prepare(
+            'SELECT s.id, s.domain
+             FROM tracked_title_sources tts
+             JOIN sources s ON s.id = tts.source_id
+             WHERE tts.tracked_title_id = ? AND tts.muted = 0'
+        );
+        $linkedSourcesStmt->execute([$trackedTitleId]);
+        $linkedSources = $linkedSourcesStmt->fetchAll();
 
         $added = 0;
-        foreach ($articles as $article) {
-            if ($this->insertReviewIfNew($titleId, $newsSourceId, $article)) {
-                $added++;
+        $failures = 0;
+        $lastError = null;
+
+        foreach ($linkedSources as $source) {
+            $sourceId = (int) $source['id'];
+            $domain = $source['domain'];
+
+            try {
+                $items = SourceRegistry::fetcherFor($domain)->search($query);
+                $this->markSourceHealth($sourceId, 'ok');
+            } catch (\Throwable $e) {
+                $this->markSourceHealth($sourceId, 'degraded');
+                error_log("Ingestion error for source {$domain}: " . $e->getMessage());
+                $lastError = $e;
+                $failures++;
+                continue; // one source failing shouldn't stop the others
+            }
+
+            foreach ($items as $item) {
+                if ($this->insertReviewIfNew($titleId, $sourceId, $item)) {
+                    $added++;
+                }
             }
         }
 
@@ -88,13 +110,20 @@ class IngestionService
         );
         $update->execute([$cadenceHours, $trackedTitleId]);
 
+        // If every single linked source failed, surface that to the caller
+        // (e.g. the "check now" button) instead of silently reporting success
+        // with 0 added — but a partial failure (some sources ok) is not an error.
+        if (!empty($linkedSources) && $failures === count($linkedSources)) {
+            throw $lastError;
+        }
+
         return $added;
     }
 
-    private function insertReviewIfNew(int $titleId, int $sourceId, array $article): bool
+    private function insertReviewIfNew(int $titleId, int $sourceId, array $item): bool
     {
         $pdo = Database::pdo();
-        $dedupKey = sha1($article['external_url']);
+        $dedupKey = sha1($item['external_url']);
 
         $check = $pdo->prepare('SELECT id FROM reviews WHERE dedup_key = ? LIMIT 1');
         $check->execute([$dedupKey]);
@@ -111,22 +140,31 @@ class IngestionService
         $stmt->execute([
             $titleId,
             $sourceId,
-            $article['external_url'],
-            $article['source_name'] ?? null,
-            $article['headline'] ?? null,
-            $article['snippet'] ?? '',
+            $item['external_url'],
+            $item['author'] ?? null,
+            $item['headline'] ?? null,
+            $item['text'] ?? '',
             $dedupKey,
-            $article['published_at'] ?? null,
+            $this->toMysqlDatetime($item['published_at'] ?? null),
         ]);
         return true;
     }
 
-    private function sourceId(string $domain): ?int
+    /**
+     * Every source client returns published_at as ISO 8601 (NewsAPI,
+     * YouTube) or date('c') (Reddit) — e.g. "2026-08-18T12:00:00Z". MySQL's
+     * DATETIME column rejects that format outright under strict mode (the
+     * default since MySQL 5.7/MariaDB 10.2), which would otherwise fail
+     * every single insert that has a publish date. Normalize here, once,
+     * for every source.
+     */
+    private function toMysqlDatetime(?string $iso8601): ?string
     {
-        $stmt = Database::pdo()->prepare('SELECT id FROM sources WHERE domain = ? LIMIT 1');
-        $stmt->execute([$domain]);
-        $id = $stmt->fetchColumn();
-        return $id === false ? null : (int) $id;
+        if ($iso8601 === null || $iso8601 === '') {
+            return null;
+        }
+        $timestamp = strtotime($iso8601);
+        return $timestamp === false ? null : date('Y-m-d H:i:s', $timestamp);
     }
 
     private function markSourceHealth(int $sourceId, string $status): void
