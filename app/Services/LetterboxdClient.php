@@ -73,7 +73,14 @@ class LetterboxdClient
                 break; // no more pages
             }
             if ($status !== 200) {
-                throw new \RuntimeException("Letterboxd reviews fetch failed with HTTP $status for $path");
+                // Include a snippet of the body — a 403 here could be a normal
+                // "no such film" style page, or it could be Letterboxd's edge/WAF
+                // bot-detection blocking the request even though robots.txt
+                // itself allows this path (robots.txt compliance and passing a
+                // WAF's bot check are two different things). The snippet is
+                // what tells us which.
+                $snippet = substr(strip_tags($html), 0, 300);
+                throw new \RuntimeException("Letterboxd reviews fetch failed with HTTP $status for $path — body: $snippet");
             }
 
             $pageResults = $this->parseReviews($html);
