@@ -21,7 +21,8 @@ class IngestionService
     {
         $pdo = Database::pdo();
         $stmt = $pdo->query(
-            "SELECT tt.id AS tracked_title_id, t.id AS title_id, t.display_name, t.creator_name
+            "SELECT tt.id AS tracked_title_id, t.id AS title_id, t.display_name, t.creator_name,
+                    t.type AS title_type, t.canonical_source, t.canonical_id
              FROM tracked_titles tt
              JOIN titles t ON t.id = tt.title_id
              WHERE tt.next_fetch_at <= NOW()"
@@ -39,7 +40,10 @@ class IngestionService
                     (int) $row['tracked_title_id'],
                     (int) $row['title_id'],
                     $row['display_name'],
-                    $row['creator_name']
+                    $row['creator_name'],
+                    $row['title_type'],
+                    $row['canonical_source'],
+                    $row['canonical_id']
                 );
             } catch (\Throwable $e) {
                 $errors[] = "tracked_title_id={$row['tracked_title_id']}: " . $e->getMessage();
@@ -56,15 +60,24 @@ class IngestionService
      * to this tracked title; one source failing doesn't stop the others
      * (CLAUDE.md §7.2 — sources are meant to degrade independently).
      */
-    public function fetchForTitle(int $trackedTitleId, int $titleId, string $displayName, ?string $creatorName): int
-    {
-        // Backfills any Tier A source that didn't exist yet when this title
-        // was first tracked (e.g. a Phase 1 tracked_title gaining Reddit/
-        // YouTube in Phase 2) — cheap and idempotent, safe to call every run.
-        SourceRegistry::ensureAllLinked($trackedTitleId);
+    public function fetchForTitle(
+        int $trackedTitleId,
+        int $titleId,
+        string $displayName,
+        ?string $creatorName,
+        string $titleType = 'film',
+        ?string $canonicalSource = null,
+        ?string $canonicalId = null
+    ): int {
+        // Backfills any source that didn't exist yet when this title was
+        // first tracked (e.g. a Phase 1 tracked_title gaining Reddit/YouTube
+        // in Phase 2, or a Phase-1/2 film gaining Letterboxd in Phase 3) —
+        // cheap and idempotent, safe to call every run.
+        SourceRegistry::ensureAllLinked($trackedTitleId, $titleType);
 
         $pdo = Database::pdo();
         $query = trim($displayName . ' ' . ($creatorName ?? ''));
+        $titleMeta = ['type' => $titleType, 'canonical_source' => $canonicalSource, 'canonical_id' => $canonicalId];
 
         $linkedSourcesStmt = $pdo->prepare(
             'SELECT s.id, s.domain
@@ -84,7 +97,7 @@ class IngestionService
             $domain = $source['domain'];
 
             try {
-                $items = SourceRegistry::fetcherFor($domain)->search($query);
+                $items = SourceRegistry::fetcherFor($domain)->search($query, $titleMeta);
                 $this->markSourceHealth($sourceId, 'ok');
             } catch (\Throwable $e) {
                 $this->markSourceHealth($sourceId, 'degraded');
@@ -135,7 +148,7 @@ class IngestionService
             'INSERT INTO reviews
                 (title_id, source_id, external_url, author, headline, raw_text, native_rating,
                  dedup_key, classification_status, fetched_at, published_at)
-             VALUES (?, ?, ?, ?, ?, ?, NULL, ?, "pending", NOW(), ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, "pending", NOW(), ?)'
         );
         $stmt->execute([
             $titleId,
@@ -144,6 +157,7 @@ class IngestionService
             $item['author'] ?? null,
             $item['headline'] ?? null,
             $item['text'] ?? '',
+            $item['native_rating'] ?? null,
             $dedupKey,
             $this->toMysqlDatetime($item['published_at'] ?? null),
         ]);

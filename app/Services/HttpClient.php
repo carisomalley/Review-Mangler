@@ -10,7 +10,7 @@ class HttpClient
 {
     /**
      * @param array<string,string> $headers
-     * @return array{status:int, body:string}
+     * @return array{status:int, body:string, effective_url:string}
      */
     public static function get(string $url, array $headers = [], int $timeoutSeconds = 15): array
     {
@@ -19,7 +19,7 @@ class HttpClient
 
     /**
      * @param array<string,string> $headers
-     * @return array{status:int, body:string}
+     * @return array{status:int, body:string, effective_url:string}
      */
     public static function postJson(string $url, array $payload, array $headers = [], int $timeoutSeconds = 30): array
     {
@@ -29,7 +29,7 @@ class HttpClient
 
     /**
      * @param array<string,string> $headers
-     * @return array{status:int, body:string}
+     * @return array{status:int, body:string, effective_url:string}
      */
     private static function request(string $method, string $url, ?string $body, array $headers, int $timeoutSeconds): array
     {
@@ -52,8 +52,12 @@ class HttpClient
             throw new \RuntimeException("HTTP request to $url failed: $error");
         }
         $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        // Used by scrapers that get redirected to a canonical URL (e.g.
+        // Letterboxd's /tmdb/{id}/ -> /film/{slug}/) and need to know where
+        // they actually landed, not just the URL they requested.
+        $effectiveUrl = (string) curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         curl_close($ch);
 
-        return ['status' => $status, 'body' => $responseBody];
+        return ['status' => $status, 'body' => $responseBody, 'effective_url' => $effectiveUrl];
     }
 }

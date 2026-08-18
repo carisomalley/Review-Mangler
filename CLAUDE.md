@@ -232,7 +232,13 @@ Two tiers, because the sources named span both:
   criticism and personal commentary for a documentary).
 
 **Tier B — scraping (for IMDb, Letterboxd, Goodreads, Amazon reviews),
-explicitly acknowledged as the higher-risk path per your steer:**
+explicitly acknowledged as the higher-risk path per your steer.** **Update,
+Phase 3 (2026-08-18):** only Letterboxd was actually built — IMDb,
+Goodreads, and Amazon all disallow the pages a scraper needs in their own
+robots.txt (see §13's build log and §9.5's table for specifics), so building
+scrapers for them would violate the very "respect robots.txt" rule below.
+The design principles here still apply to Letterboxd and to any future
+source where the robots.txt picture changes:
 - Build a source-specific fetcher per site, isolated behind a common
   interface so one breaking doesn't take down the others.
 - Respect `robots.txt` per domain; identify with a clear, honest User-Agent
@@ -476,10 +482,10 @@ separate table, per the cron-batch approach in 9.3.
 | Blogs | RSS/Atom polling + web search API for discovery | Robust, low risk |
 | Reddit mentions | Reddit API | Official, free within limits |
 | Video reviews/comments | YouTube Data API | Official |
-| IMDb reviews | Scrape (Tier B) | No public API; high fragility |
-| Letterboxd reviews | Scrape (Tier B) | No public API |
-| Goodreads reviews | Scrape (Tier B) | API retired 2020 |
-| Amazon reviews | Scrape (Tier B) | No public API; strict anti-bot measures, highest risk of the four |
+| IMDb reviews | Not built | No public API; robots.txt disallows generic crawlers site-wide (checked 2026-08-18, §13) |
+| Letterboxd reviews | Scrape (Tier B) — **built, Phase 3** | No public API, but robots.txt allows the pages needed; see §13 |
+| Goodreads reviews | Not built | API retired 2020; robots.txt explicitly disallows `/book/reviews/`, `/review/show`, `/search` (checked 2026-08-18, §13) |
+| Amazon reviews | Not built | No public API; strict anti-bot measures, highest risk of the four (checked 2026-08-18, §13) |
 | Sentiment/meanness/constructive classification | Claude API | Rubric-driven, versioned prompts |
 | Transactional email | Hostinger SMTP or Resend/Postmark | Test deliverability early |
 
@@ -508,10 +514,14 @@ separate table, per the cron-batch approach in 9.3.
 
 ## 11. Open questions / risks to revisit with the user before/while building
 
-- **Legal/ToS review of scraping IMDb, Letterboxd, Goodreads, and especially
-  Amazon** — this spec designs around it per your steer, but a real ToS/legal
-  gut-check is warranted before this goes in front of other creators, not
-  just self-use. Worth revisiting once the MVP is otherwise working.
+- **Legal/ToS review of scraping.** **Partially resolved (2026-08-18):**
+  checked robots.txt for all four Tier B candidates before building anything
+  — IMDb, Goodreads, and Amazon each disallow what a scraper would need, so
+  only Letterboxd was built (see §13 for the exact findings). Still open:
+  robots.txt compliance isn't the same as Letterboxd's Terms of Service
+  permitting this kind of automated, multi-tenant review aggregation — a
+  real ToS/legal read is warranted before this goes in front of other
+  creators, not just self-use.
 - **LLM classification cost model at scale** — fine for a handful of titles;
   needs a real budget estimate once user count and review volume are known.
 - **Whether multi-tenant means self-serve signup from day one, or an
@@ -539,9 +549,11 @@ separate table, per the cron-batch approach in 9.3.
 2. **Phase 2**: add remaining Tier A sources (Reddit, YouTube), add the
    personal-attack flag and content-warning tags explicitly, add the
    Correction feedback loop, add digest emails.
-3. **Phase 3**: add Tier B scraped sources one at a time (start with
-   whichever has the least aggressive anti-bot posture), with health/coverage
-   indicators live from the start.
+3. **Phase 3 (done, 2026-08-18):** add Tier B scraped sources one at a time,
+   robots.txt-permitting. Built Letterboxd only — IMDb, Goodreads, and Amazon
+   all disallow it in their own robots.txt; see §13. Health/coverage
+   indicators (already live since Phase 1/2's `sources.health_status`) now
+   have a real Tier B source exercising them.
 4. **Phase 4**: delegate access, vacation mode, self-serve multi-tenant
    signup, trend charts.
 
@@ -587,3 +599,72 @@ under this scheme. The original deny-all block in `.htaccess` is untouched;
 the rewrite doesn't apply to `app/`, `db/`, `bin/`, `cron/`, or `.env`
 because they're real directories/files at that level, so they still fall
 straight through to the same deny-all protection as before.
+
+**Phase 3 (2026-08-18):** Before writing any scraper code, checked the live
+robots.txt for all four Tier B candidates named in §7.4/§9.5 — this resolves
+the "legal/ToS review" item in §11 for the robots.txt layer specifically
+(ToS itself is still worth a human read, see the updated open question
+below). Findings:
+
+- **IMDb** — disallows generic crawlers essentially site-wide.
+- **Amazon** — same; also refused outright before robots.txt content could
+  even be inspected, consistent with §9.5's "highest risk of the four" note.
+- **Goodreads** — `User-agent: *` explicitly disallows `/book/reviews/`,
+  `/review/show`, and `/search` — the exact paths a review scraper needs.
+- **Letterboxd** — no disallow on `/film/`, `/tmdb/`, or the default
+  (unsorted) `/reviews/` listing; only sorted/filtered variants like
+  `/*/by/*` and `/*/tag/*` are blocked for generic crawlers.
+
+So Phase 3 builds **Letterboxd only**. IMDb, Goodreads, and Amazon are not
+built — scraping any of them would violate the very requirement
+(`RobotsChecker.php`, see below) this phase was built to satisfy. This
+should be treated as a finding to revisit, not a permanent decision: sites
+change their robots.txt, and a paid/partner API could change the calculus
+entirely (e.g. IMDb does license data commercially).
+
+New pieces:
+- **`RobotsChecker.php`** — fetches, parses, and caches (`storage/cache/`,
+  24h TTL, gitignored) any domain's robots.txt, with longest-match-wins
+  semantics and a fail-closed default (can't verify → don't scrape). Every
+  Tier B fetcher is expected to call this before every request, not just
+  once at design time — this is what makes "respect robots.txt" durable
+  against the site changing its rules later instead of a one-time manual
+  check.
+- **`LetterboxdClient.php`** — resolves a film to its Letterboxd page via
+  `https://letterboxd.com/tmdb/{id}/`, which redirects straight to the
+  canonical `/film/{slug}/` page (confirmed live). This sidesteps Letterboxd's
+  own text search entirely, which turned out to be necessary: that search is
+  loaded client-side via JS and returns nothing to a plain HTTP fetch anyway.
+  Parses the unsorted `/film/{slug}/reviews/` listing (2 pages max per run)
+  with `DOMDocument`/`DOMXPath`, filters out star-only "watched" logs
+  (< 40 chars of actual text), and stores the star rating as an unnormalized
+  string (e.g. `"3.5/5"`) in `reviews.native_rating` — which Phase 1/2 had a
+  column for but never populated. Sends an honest `User-Agent` with a real
+  contact (new `SCRAPER_CONTACT` env var, required) and a randomized
+  0.4–1.2s delay between requests, since Letterboxd's robots.txt sets no
+  explicit `Crawl-delay`.
+- **Honesty about verification**: this dev environment has no outbound
+  network access to arbitrary third-party sites (only WebFetch, which
+  summarizes via a small model rather than returning raw HTML), so the DOM
+  parsing was built from live inspection via WebFetch in August 2026 and a
+  synthetic-HTML unit test of the parsing logic itself — not an end-to-end
+  run against the real, live site. It deliberately keys off the most stable
+  part of Letterboxd's markup (the `/username/film/slug/` review permalink
+  URL shape) rather than CSS class names, which are far more likely to
+  shift in a redesign. If a tracked film's Letterboxd reviews stay at zero
+  after a "check now," that's the first place to look — see the big comment
+  at the top of `LetterboxdClient.php`.
+- **No schema/migration change needed** — `sources.type` was already a plain
+  `VARCHAR(50)` with `'letterboxd'` in its own comment as an anticipated
+  value since Phase 1, and `fetch_type ENUM('api','scrape')` already covered
+  `scrape`. `SourceRegistry` now tags each source with which title type(s)
+  it applies to (`letterboxd.com` → films only) so it's never linked to a
+  tracked book; existing film `tracked_titles` from Phases 1/2 pick it up
+  automatically on their next ingestion tick via the same backfill pattern
+  Phase 2 used for Reddit/YouTube — no manual DB changes required.
+- Same caveats as Phases 1/2: PHP-lint clean; the robots.txt parser and the
+  DOM-parsing logic were each unit-tested against realistic input
+  (Letterboxd's actual live robots.txt rules, and a synthetic HTML fixture
+  matching Letterboxd's known markup shape) since no live MySQL/API-key
+  environment is available in the build sandbox — but nothing here has run
+  against Letterboxd's real, live HTML.

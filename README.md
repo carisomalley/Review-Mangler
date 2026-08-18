@@ -1,4 +1,4 @@
-# Review Mangler — Phase 1 + 2
+# Review Mangler — Phase 1 + 2 + 3
 
 Read `CLAUDE.md` first for the full product spec. This README is the "how to
 actually run it" companion.
@@ -32,10 +32,33 @@ actually run it" companion.
   by default, weekly or on-new-activity cadence, never includes raw review
   text, and fully skipped for any account with `vacation_mode` on.
 
-**Not yet built** (later phases per CLAUDE.md §12): IMDb/Letterboxd/
-Goodreads/Amazon scraping, delegate access, a UI for vacation mode (the
-column exists and digests already respect it — there's just no toggle in
-the app yet), trend charts, self-serve signup.
+**Phase 3 adds:**
+- Letterboxd as a fourth source (`app/Services/LetterboxdClient.php`), the
+  first and — per the robots.txt check below — only Tier B (scraped) source.
+  Film-only; resolves a film via its TMDB id (`https://letterboxd.com/tmdb/{id}/`
+  redirects to the canonical page) rather than fuzzy text search, and stores
+  the star rating in `reviews.native_rating`.
+- `app/Services/RobotsChecker.php` — fetches and caches each domain's
+  robots.txt and checks every request against it before it's made. Every
+  Tier B fetcher goes through this.
+- New `SCRAPER_CONTACT` env var (required) — a real contact method sent in
+  Letterboxd's User-Agent, per the spec's scraping-ethics section.
+- **Read this before assuming it works out of the box:** the HTML parsing in
+  `LetterboxdClient.php` was built from live inspection, not tested
+  end-to-end against a running server (see CLAUDE.md §13's Phase 3 entry for
+  why, and what to check first if reviews come back empty).
+
+**Not built, and not going to be** (checked against each site's live
+robots.txt on 2026-08-18 — see CLAUDE.md §13): IMDb and Amazon disallow
+generic crawlers essentially site-wide; Goodreads (whose review API retired
+in 2020 anyway) explicitly disallows `/book/reviews/`, `/review/show`, and
+`/search`. Scraping any of them would violate the same robots.txt rule
+`RobotsChecker.php` exists to enforce. Revisit if any of the three change
+their robots.txt, or if a licensed data deal ever makes sense.
+
+**Not yet built** (later phases per CLAUDE.md §12): delegate access, a UI
+for vacation mode (the column exists and digests already respect it —
+there's just no toggle in the app yet), trend charts, self-serve signup.
 
 ## Before you deploy: read this
 
@@ -53,6 +76,10 @@ re-checking against current docs, not just this comment:
 Each source lives behind `SourceRegistry`, so swapping or dropping a
 provider is a small, contained change — it never touches the ingestion,
 classification, or dashboard code.
+
+`app/Services/LetterboxdClient.php` has its own, longer caveat: unlike the
+three API-based clients above, it's a scraper, so it's fragile by nature —
+read the class doc comment before relying on it.
 
 Also test digest deliverability early (CLAUDE.md §9.2) — the built-in SMTP
 client works with Hostinger's mailbox SMTP settings, but if digests land in
@@ -178,7 +205,8 @@ php cron/digest.php
 CLAUDE.md              the product spec — read this for the "why"
 app/                    PHP classes (no framework, no Composer dependency)
   Services/             one class per external integration + per pipeline stage
-    SourceRegistry.php  the list of Tier A sources and how to fetch each
+    SourceRegistry.php  the list of sources (which title types each applies to) and how to fetch each
+    RobotsChecker.php   fetches/caches robots.txt, used by every Tier B (scraped) source
 public/                 pages + assets — the document root if your plan allows setting
                         one, otherwise routed here from public_html/ by .htaccess
 cron/                   the three scheduled scripts (§9.3)

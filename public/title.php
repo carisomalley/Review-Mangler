@@ -41,12 +41,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['check_now'])) {
                 (int) $tracked['id'],
                 (int) $tracked['title_id'],
                 $tracked['display_name'],
-                $tracked['creator_name']
+                $tracked['creator_name'],
+                $tracked['type'],
+                $tracked['canonical_source'],
+                $tracked['canonical_id']
             );
             $checkNowMessage = $added > 0 ? "Found {$added} new item(s). They'll be scored shortly." : "Checked — nothing new right now.";
         } catch (\Throwable $e) {
             error_log($e->getMessage());
-            $checkNowMessage = "Couldn't check right now — the news source may be unavailable.";
+            $checkNowMessage = "Couldn't check right now — one of the sources may be unavailable.";
         }
         // Refresh $tracked so the cooldown reflects the check we just did.
         $tracked = $titleService->getOwnedTrackedTitle($userId, $trackedTitleId);

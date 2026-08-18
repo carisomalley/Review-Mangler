@@ -1,3 +1,7 @@
 .env
 *.log
 .DS_Store
+
+# Cached robots.txt bodies (RobotsChecker.php, Phase 3) — public content,
+# just not worth committing; auto-recreated at runtime.
+storage/cache/

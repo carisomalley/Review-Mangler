@@ -72,9 +72,10 @@ class TitleService
         $stmt->execute([$userId, $titleId, $refreshCadenceHours]);
         $trackedTitleId = (int) $pdo->lastInsertId();
 
-        // Link every currently-known Tier A source (CLAUDE.md §7.2, §9.5) —
-        // see SourceRegistry for the single place that list lives.
-        SourceRegistry::ensureAllLinked($trackedTitleId);
+        // Link every currently-known source that applies to this title's type
+        // (CLAUDE.md §7.2, §9.5) — see SourceRegistry for the single place
+        // that list lives.
+        SourceRegistry::ensureAllLinked($trackedTitleId, $type);
 
         return $trackedTitleId;
     }
@@ -104,7 +105,8 @@ class TitleService
     public function getOwnedTrackedTitle(int $userId, int $trackedTitleId): ?array
     {
         $stmt = Database::pdo()->prepare(
-            'SELECT tt.*, t.display_name, t.creator_name, t.year, t.type, t.id AS title_id
+            'SELECT tt.*, t.display_name, t.creator_name, t.year, t.type, t.id AS title_id,
+                    t.canonical_source, t.canonical_id
              FROM tracked_titles tt
              JOIN titles t ON t.id = tt.title_id
              WHERE tt.id = ? AND tt.user_id = ?
