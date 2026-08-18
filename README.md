@@ -154,12 +154,20 @@ sending from shared-hosting IP space. That would mean rewriting
      redeploy) — it's a one-time-use file, not something to leave live.
      (Worth getting SSH/Composer-capable hosting if you plan to keep
      iterating on this — see CLAUDE.md §11's open question on plan tier.)
-8. **Set up the three cron jobs.** hPanel → Advanced → Cron Jobs:
-   - Every 30 minutes: `php /home/USER/domains/yourdomain.com/review-mangler/cron/ingest.php`
-   - Every 5–10 minutes: `php /home/USER/domains/yourdomain.com/review-mangler/cron/classify.php`
-   - Once a day: `php /home/USER/domains/yourdomain.com/review-mangler/cron/digest.php`
+8. **Set up the three cron jobs.** First, get the exact absolute path: SSH in,
+   `cd` to wherever `cron/` lives (on the fixed-docroot shared/business plans
+   from step 2, that's `public_html` itself), then run `pwd` and copy what it
+   prints. Then in hPanel → Advanced → Cron Jobs, create three jobs using that
+   path in place of `/home/USER/domains/yourdomain.com/public_html` below:
+   - Every 30 minutes: `php /home/USER/domains/yourdomain.com/public_html/cron/ingest.php`
+   - Every 5–10 minutes: `php /home/USER/domains/yourdomain.com/public_html/cron/classify.php`
+   - Once a day: `php /home/USER/domains/yourdomain.com/public_html/cron/digest.php`
 
-   (Adjust the path to wherever you actually uploaded the code.)
+   If a job's log (hPanel shows recent output per job) comes back empty or
+   with a "command not found"-style error, run `which php` over SSH and use
+   that full path (e.g. `/usr/bin/php`) instead of the bare `php` above —
+   cron's environment doesn't always have the same `$PATH` as an interactive
+   SSH shell.
 9. **Log in** at `https://yourdomain.com/login.php` and add your first title.
 
 ### If routing doesn't work (blank page, 403, or 404 at your domain)

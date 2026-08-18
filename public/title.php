@@ -126,6 +126,13 @@ require __DIR__ . '/_header.php';
     <button type="submit" name="check_now" value="1" <?= $canCheckNow ? '' : 'disabled' ?>>
       <?= $canCheckNow ? 'Check for new reviews now' : 'Checked recently — try later' ?>
     </button>
+    <?php if (!$canCheckNow): ?>
+      <p class="muted small">
+        You can check again after <?= htmlspecialchars($cooldownUntil->format('M j, g:ia')) ?>
+        (a <?= $cooldownHours ?>-hour cooldown between manual checks — CLAUDE.md §4 — but automatic
+        ingestion still runs on its own schedule via cron in the background, if it's set up).
+      </p>
+    <?php endif; ?>
   </form>
 </div>
 
