@@ -5,15 +5,18 @@
  * signup form yet). Run once per creator you're onboarding:
  *
  *   php bin/create_user.php someone@example.com 'a strong password'
+ *
+ * No SSH access on your plan? Use public/setup_admin.php instead — see the
+ * big warning at the top of that file before you do.
  */
 
 require __DIR__ . '/../app/bootstrap.php';
 
-use App\Database;
+use App\Services\UserService;
 
 if (php_sapi_name() !== 'cli') {
     http_response_code(403);
-    die("This script is CLI-only.\n");
+    die("This script is CLI-only. See public/setup_admin.php for a browser-based fallback.\n");
 }
 
 if ($argc !== 3) {
@@ -23,24 +26,10 @@ if ($argc !== 3) {
 
 [, $email, $password] = $argv;
 
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-    fwrite(STDERR, "That doesn't look like a valid email address.\n");
-    exit(1);
-}
-if (strlen($password) < 8) {
-    fwrite(STDERR, "Use a password with at least 8 characters.\n");
+$result = UserService::create($email, $password);
+if (!$result['ok']) {
+    fwrite(STDERR, $result['error'] . "\n");
     exit(1);
 }
 
-$pdo = Database::pdo();
-$check = $pdo->prepare('SELECT id FROM users WHERE email = ?');
-$check->execute([$email]);
-if ($check->fetch()) {
-    fwrite(STDERR, "A user with that email already exists.\n");
-    exit(1);
-}
-
-$stmt = $pdo->prepare('INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, NOW())');
-$stmt->execute([$email, password_hash($password, PASSWORD_DEFAULT)]);
-
-echo "Created user #{$pdo->lastInsertId()} ($email). They can log in at /login.php.\n";
+echo "Created user #{$result['id']} ($email). They can log in at /login.php.\n";

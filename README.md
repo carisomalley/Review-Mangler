@@ -113,15 +113,20 @@ sending from shared-hosting IP space. That would mean rewriting
    where to get each key.
 6. **Enable SSL.** hPanel → SSL → enable free SSL for your domain if it
    isn't already. The app forces secure session cookies in production mode.
-7. **Create your first (invite-only) user.** If your plan has SSH access:
-   ```
-   php bin/create_user.php you@example.com 'a strong password'
-   ```
-   If you don't have SSH, most Hostinger plans still let you run a one-off
-   PHP script via a browser — as a fallback, temporarily drop a tiny script
-   in `public/` that requires `bin/create_user.php`'s logic, run it once,
-   then delete it. (Worth getting SSH/Composer-capable hosting if you plan
-   to keep iterating on this — see CLAUDE.md §11's open question on plan tier.)
+7. **Create your first (invite-only) user.**
+   - **If your plan has SSH access** (hPanel → Advanced → SSH Access — check
+     whether it's enabled): SSH in, `cd` to where you uploaded the code, and run
+     ```
+     php bin/create_user.php you@example.com 'a strong password'
+     ```
+   - **If it doesn't** (common on entry-level shared plans): set a long
+     random value for `SETUP_TOKEN` in `.env`, then visit
+     `https://yourdomain.com/setup_admin.php`, enter that token plus the
+     email/password you want, and submit. **Immediately delete
+     `public/setup_admin.php`** afterward (File Manager, or `git rm` +
+     redeploy) — it's a one-time-use file, not something to leave live.
+     (Worth getting SSH/Composer-capable hosting if you plan to keep
+     iterating on this — see CLAUDE.md §11's open question on plan tier.)
 8. **Set up the three cron jobs.** hPanel → Advanced → Cron Jobs:
    - Every 30 minutes: `php /home/USER/domains/yourdomain.com/review-mangler/cron/ingest.php`
    - Every 5–10 minutes: `php /home/USER/domains/yourdomain.com/review-mangler/cron/classify.php`
@@ -179,6 +184,7 @@ public/                 pages + assets — the document root if your plan allows
 cron/                   the three scheduled scripts (§9.3)
 db/schema.sql           full database schema (fresh installs)
 db/migrations/          incremental changes for already-deployed installs
-bin/create_user.php     CLI-only invite-a-user script
+bin/create_user.php     CLI-only invite-a-user script (preferred — needs SSH)
+public/setup_admin.php  one-time browser fallback if you don't have SSH — delete after use
 .env.example            copy to .env and fill in
 ```
