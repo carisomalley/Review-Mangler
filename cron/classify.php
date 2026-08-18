@@ -12,14 +12,20 @@ require __DIR__ . '/../app/bootstrap.php';
 
 use App\Services\ClassificationService;
 
-$result = (new ClassificationService())->processPending(25);
+// See bin/create_user.php's comment on why this is wrapped explicitly.
+try {
+    $result = (new ClassificationService())->processPending(25);
 
-echo sprintf(
-    "[%s] classify: processed %d review(s), %d error(s)\n",
-    date('Y-m-d H:i:s'),
-    $result['processed'],
-    count($result['errors'])
-);
-foreach ($result['errors'] as $err) {
-    echo "  - $err\n";
+    echo sprintf(
+        "[%s] classify: processed %d review(s), %d error(s)\n",
+        date('Y-m-d H:i:s'),
+        $result['processed'],
+        count($result['errors'])
+    );
+    foreach ($result['errors'] as $err) {
+        echo "  - $err\n";
+    }
+} catch (\Throwable $e) {
+    fwrite(STDERR, '[' . date('Y-m-d H:i:s') . "] classify FAILED: " . $e->getMessage() . "\n");
+    exit(1);
 }

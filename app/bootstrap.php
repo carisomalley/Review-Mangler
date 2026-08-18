@@ -32,4 +32,10 @@ if (session_status() === PHP_SESSION_NONE) {
 date_default_timezone_set(Env::get('APP_TIMEZONE', 'UTC'));
 
 error_reporting(E_ALL);
-ini_set('display_errors', Env::get('APP_ENV') === 'local' ? '1' : '0');
+// Show errors for local dev AND any command-line run (bin/create_user.php,
+// cron/*.php) — only a real website visitor should ever have errors hidden.
+// Discovered the hard way: PHP -d display_errors=1 on the command line
+// can't override an admin-locked setting on some hosts, so cron/CLI output
+// was silently swallowed until this was forced here instead.
+$showErrors = Env::get('APP_ENV') === 'local' || PHP_SAPI === 'cli';
+ini_set('display_errors', $showErrors ? '1' : '0');

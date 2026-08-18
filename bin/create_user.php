@@ -26,10 +26,17 @@ if ($argc !== 3) {
 
 [, $email, $password] = $argv;
 
-$result = UserService::create($email, $password);
-if (!$result['ok']) {
-    fwrite(STDERR, $result['error'] . "\n");
+// Wrapped explicitly rather than relying on php.ini's display_errors — some
+// hosts lock that setting server-side in a way even `php -d display_errors=1`
+// can't override, which otherwise means a crash here prints nothing at all.
+try {
+    $result = UserService::create($email, $password);
+    if (!$result['ok']) {
+        fwrite(STDERR, $result['error'] . "\n");
+        exit(1);
+    }
+    echo "Created user #{$result['id']} ($email). They can log in at /login.php.\n";
+} catch (\Throwable $e) {
+    fwrite(STDERR, 'FAILED: ' . $e->getMessage() . "\n");
     exit(1);
 }
-
-echo "Created user #{$result['id']} ($email). They can log in at /login.php.\n";

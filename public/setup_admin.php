@@ -35,12 +35,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $email = trim($_POST['email'] ?? '');
         $password = $_POST['password'] ?? '';
-        $result = UserService::create($email, $password);
-        if ($result['ok']) {
-            $success = true;
-            $message = "Created user #{$result['id']} ($email). They can log in at /login.php now.";
-        } else {
-            $message = $result['error'];
+        try {
+            $result = UserService::create($email, $password);
+            if ($result['ok']) {
+                $success = true;
+                $message = "Created user #{$result['id']} ($email). They can log in at /login.php now.";
+            } else {
+                $message = $result['error'];
+            }
+        } catch (\Throwable $e) {
+            // Shown because this page is already token-gated — the same
+            // failure mode that made CLI debugging painful (a bad .env
+            // value swallowed by php.ini's display_errors) would otherwise
+            // repeat here with no way to see what actually went wrong.
+            $message = 'FAILED: ' . $e->getMessage();
         }
     }
 }

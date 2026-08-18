@@ -11,15 +11,21 @@ require __DIR__ . '/../app/bootstrap.php';
 
 use App\Services\NotificationService;
 
-$result = (new NotificationService())->sendDue();
+// See bin/create_user.php's comment on why this is wrapped explicitly.
+try {
+    $result = (new NotificationService())->sendDue();
 
-echo sprintf(
-    "[%s] digest: sent %d, skipped %d, %d error(s)\n",
-    date('Y-m-d H:i:s'),
-    $result['sent'],
-    $result['skipped'],
-    count($result['errors'])
-);
-foreach ($result['errors'] as $err) {
-    echo "  - $err\n";
+    echo sprintf(
+        "[%s] digest: sent %d, skipped %d, %d error(s)\n",
+        date('Y-m-d H:i:s'),
+        $result['sent'],
+        $result['skipped'],
+        count($result['errors'])
+    );
+    foreach ($result['errors'] as $err) {
+        echo "  - $err\n";
+    }
+} catch (\Throwable $e) {
+    fwrite(STDERR, '[' . date('Y-m-d H:i:s') . "] digest FAILED: " . $e->getMessage() . "\n");
+    exit(1);
 }
